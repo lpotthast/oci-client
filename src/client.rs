@@ -2,6 +2,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 use std::hash::Hash;
+use std::net::SocketAddr;
 use std::pin::pin;
 use std::sync::Arc;
 use std::time::Duration;
@@ -350,6 +351,11 @@ impl TryFrom<ClientConfig> for Client {
             }
             client_builder = client_builder
                 .tls_certs_merge(convert_certificates(&config.extra_root_certificates)?);
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        for (domain, addresses) in &config.resolve {
+            client_builder = client_builder.resolve_to_addrs(domain, addresses);
         }
 
         if let Some(timeout) = config.read_timeout {
@@ -2565,6 +2571,23 @@ pub struct ClientConfig {
     ///
     /// This defaults to `None`.
     pub no_proxy: Option<String>,
+
+    /// Overrides the DNS resolution of the given domains. The client connects to
+    /// the given addresses whenever a URL names one of the domains, instead of
+    /// resolving the domain. Requests keep the domain as their host, so that TLS
+    /// still verifies the certificate for that name.
+    ///
+    /// This can be used to reach a registry under its public name at an internal
+    /// address, such as a container on the same network.
+    ///
+    /// The port of each address is ignored. The client connects to the port of
+    /// the URL.
+    ///
+    /// See [`reqwest::ClientBuilder::resolve_to_addrs`] for more information.
+    /// This option is ignored on `wasm32` targets.
+    ///
+    /// This defaults to no overrides.
+    pub resolve: HashMap<String, Vec<SocketAddr>>,
 }
 
 impl Default for ClientConfig {
@@ -2587,6 +2610,7 @@ impl Default for ClientConfig {
             https_proxy: None,
             http_proxy: None,
             no_proxy: None,
+            resolve: HashMap::new(),
         }
     }
 }
